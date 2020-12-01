@@ -9,7 +9,12 @@ import filter from "lodash/filter"
 import map from "lodash/map"
 import strip from "strip-ansi"
 import table from "markdown-table"
-import { createCoverageMap, CoverageMapData } from "istanbul-lib-coverage"
+import {
+  createCoverageMap,
+  CoverageMapData,
+  createCoverageSummary,
+  CoverageSummary,
+} from "istanbul-lib-coverage"
 import type { FormattedTestResults } from "@jest/test-result/build/types"
 
 const ACTION_NAME = "jest-github-action"
@@ -100,6 +105,23 @@ export function getCoverageTable(
     console.error("No entries found in coverage data")
     return false
   }
+
+  const allSummary = createCoverageSummary()
+
+  // calculate the total coverage summary
+  covMap.files().forEach(function (f) {
+    const fc = covMap.fileCoverageFor(f)
+    const fileSummary = fc.toSummary()
+    allSummary.merge(fileSummary)
+  })
+
+  rows.push([
+    "All files",
+    allSummary.statements.pct + "%",
+    allSummary.branches.pct + "%",
+    allSummary.functions.pct + "%",
+    allSummary.lines.pct + "%",
+  ])
 
   for (const [filename, data] of Object.entries(covMap.data || {})) {
     const { data: summary } = data.toSummary()
