@@ -13,12 +13,29 @@ import {
   createCoverageMap,
   CoverageMapData,
   createCoverageSummary,
-  CoverageSummary,
 } from "istanbul-lib-coverage"
 import type { FormattedTestResults } from "@jest/test-result/build/types"
 
 const ACTION_NAME = "jest-github-action"
 const COVERAGE_HEADER = ":loop: **Code coverage**\n\n"
+
+interface ActionError {
+  error: string
+  from: string
+  message: string
+  payload: string
+}
+
+interface GitHubFile {
+  added: string
+  modified: string
+  removed: string
+  renamed: string
+  filename: string
+  status: string
+  previous_filename: string
+  distinct: boolean
+}
 
 export async function run() {
   let workingDirectory = core.getInput("working-directory", { required: false })
@@ -50,7 +67,7 @@ export async function run() {
 
     // Coverage comments
     if (getPullId() && shouldCommentCoverage()) {
-      const comment = getCoverageTable(results, CWD)
+      const comment = await getCoverageTable(results, CWD, octokit)
       if (comment) {
         await deletePreviousComments(octokit)
         const commentPayload = getCommentPayload(comment)
@@ -91,10 +108,15 @@ function shouldRunOnlyChangedFiles(): boolean {
   return Boolean(JSON.parse(core.getInput("changes-only", { required: false })))
 }
 
-export function getCoverageTable(
+function shouldShowOnlyCoverageChangedFiles(): boolean {
+  return Boolean(JSON.parse(core.getInput("coverage-changes-only", { required: false })))
+}
+
+export async function getCoverageTable(
   results: FormattedTestResults,
   cwd: string,
-): string | false {
+  octokit: GitHub,
+): Promise<string | false> {
   if (!results.coverageMap) {
     return ""
   }
@@ -123,15 +145,24 @@ export function getCoverageTable(
     allSummary.lines.pct + "%",
   ])
 
+  let changedFiles: Array<GitHubFile> = []
+
+  if (shouldShowOnlyCoverageChangedFiles()) {
+    changedFiles = await getChangedPRFiles(octokit)
+  }
+
   for (const [filename, data] of Object.entries(covMap.data || {})) {
     const { data: summary } = data.toSummary()
-    rows.push([
-      filename.replace(cwd, ""),
-      summary.statements.pct + "%",
-      summary.branches.pct + "%",
-      summary.functions.pct + "%",
-      summary.lines.pct + "%",
-    ])
+    const showAll = !shouldShowOnlyCoverageChangedFiles()
+
+    if (showAll || changedFiles.find((f) => f.filename === filename))
+      rows.push([
+        filename.replace(cwd, ""),
+        summary.statements.pct + "%",
+        summary.branches.pct + "%",
+        summary.functions.pct + "%",
+        summary.lines.pct + "%",
+      ])
   }
 
   return COVERAGE_HEADER + table(rows, { align: ["l", "r", "r", "r", "r"] })
@@ -236,4 +267,82 @@ const getOutputText = (results: FormattedTestResults) => {
 
 export function asMarkdownCode(str: string) {
   return "```\n" + str.trimRight() + "\n```"
+}
+
+/**
+ * @function getChangedPRFiles
+ * @throws {Error} when a 404 or other is received.  404 can be bad repo, owner, pr, or unauthenticated
+ * @param client authenticated github client (possibly un-authenticated if public)
+ * @returns Promise of array of changed files
+ * credit to: https://github.com/trilom/file-changes-action/blob/master/src/GithubHelper.ts
+ */
+async function getChangedPRFiles(octokit: GitHub): Promise<GitHubFile[]> {
+  try {
+    const options = octokit.pulls.listFiles.endpoint.merge({
+      owner: context.repo.owner,
+      repo: context.repo.repo,
+      pull_number: context.payload.pull_request?.number,
+    })
+    const files: GitHubFile[] = await octokit.paginate(
+      options,
+      (response) => response.data,
+    )
+    return files
+  } catch (error) {
+    const eString = `There was an error getting change files for repo:${context.repo.repo} owner:${context.repo.owner} pr:${context.payload.pull_request?.number}`
+    let ePayload: string
+    if (error.name === "HttpError" && +error.status === 404)
+      ePayload = getErrorString(
+        error.name,
+        error.status,
+        getChangedPRFiles.name,
+        eString,
+        error,
+      )
+    else
+      ePayload = getErrorString(
+        `Unknown Error:${error.name || ""}`,
+        error.status,
+        getChangedPRFiles.name,
+        eString,
+        error.message,
+      )
+    throw new Error(ePayload)
+  }
+}
+
+/**
+ * @function getErrorString
+ * @param name name of error
+ * @param status status code of error
+ * @param from name of function that error is thrown from
+ * @param message error message
+ * @param error error object to stringify and attach
+ * credit to: https://github.com/trilom/file-changes-action/blob/master/src/UtilsHelper.ts#L11
+ */
+function getErrorString(
+  name: string,
+  status = 500,
+  from: string,
+  message: string,
+  error: any = "",
+): string {
+  try {
+    const test = JSON.stringify(
+      {
+        error: `${status}/${name}`,
+        from,
+        message,
+        payload: error,
+      } as ActionError,
+      null,
+      2,
+    )
+    return test
+  } catch (error_) {
+    core.setFailed(`Error throwing error.\n ${JSON.stringify(error_.message)}`)
+    throw new Error(
+      JSON.stringify({ name: "500/undefined", message: "Error throwing error." }),
+    )
+  }
 }

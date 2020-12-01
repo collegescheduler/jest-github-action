@@ -20,6 +20,10 @@ inputs:
     description: "Only run tests on changed files (over base branch)"
     required: false
     default: "false"
+  coverage-changes-only:
+    description: "Only list coverage for changed files"
+    required: false
+    default: "false"
 
 runs:
   using: "node12"

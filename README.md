@@ -49,6 +49,18 @@ with:
   changes-only: true
 ```
 
+### Showing only coverage for changees files
+
+```yaml
+uses: mattallty/jest-github-action@v1
+env:
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+with:
+  # Only list coverage for changed files
+  # Default to false if not set
+  coverage-changes-only: true
+```
+
 ### Silencing the code coverage comment
 
 ```yaml
@@ -71,6 +83,5 @@ env:
 with:
   working-directory: "frontend"
 ```
-
 
 See the [actions tab](https://github.com/mattallty/jest-github-action/actions) for runs of this action! :rocket:
