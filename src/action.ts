@@ -193,18 +193,18 @@ export async function getCoverageTable(
         summary.functions.pct + "%",
         summary.lines.pct + "%",
       ])
-    }
 
-    const baseSummary = baseSummaries?.find((s) => s.filename === "All files")
+      const baseSummary = baseSummaries?.find((s) => s.filename === filename)
 
-    if (baseSummary) {
-      rows.push([
-        "Δ",
-        summary.statements.pct - baseSummary.summary.statements.pct + "%",
-        summary.branches.pct - baseSummary.summary.branches.pct + "%",
-        summary.functions.pct - baseSummary.summary.functions.pct + "%",
-        summary.lines.pct - baseSummary.summary.lines.pct + "%",
-      ])
+      if (baseSummary) {
+        rows.push([
+          "Δ",
+          summary.statements.pct - baseSummary.summary.statements.pct + "%",
+          summary.branches.pct - baseSummary.summary.branches.pct + "%",
+          summary.functions.pct - baseSummary.summary.functions.pct + "%",
+          summary.lines.pct - baseSummary.summary.lines.pct + "%",
+        ])
+      }
     }
   }
 
