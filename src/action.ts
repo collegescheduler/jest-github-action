@@ -154,10 +154,11 @@ export async function getCoverageTable(
   for (const [filename, data] of Object.entries(covMap.data || {})) {
     const { data: summary } = data.toSummary()
     const showAll = !shouldShowOnlyCoverageChangedFiles()
+    const canonicalFilename = filename.replace(cwd, "")
 
-    if (showAll || changedFiles.find((f) => f.filename === filename))
+    if (showAll || changedFiles.find((f) => f.filename === canonicalFilename))
       rows.push([
-        filename.replace(cwd, ""),
+        canonicalFilename,
         summary.statements.pct + "%",
         summary.branches.pct + "%",
         summary.functions.pct + "%",
