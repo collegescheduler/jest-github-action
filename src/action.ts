@@ -13,6 +13,7 @@ import {
   createCoverageMap,
   CoverageMapData,
   CoverageSummary,
+  CoverageSummaryData,
   createCoverageSummary,
 } from "istanbul-lib-coverage"
 import type { FormattedTestResults } from "@jest/test-result/build/types"
@@ -40,7 +41,7 @@ interface GitHubFile {
 
 interface CoverageMapResult {
   filename: string
-  summary: CoverageSummary
+  summary: CoverageSummary | CoverageSummaryData
 }
 
 export async function run() {
@@ -253,7 +254,7 @@ function getBaseCoverageSummaries(): Array<CoverageMapResult> | undefined {
 
     summaries.push({
       filename,
-      summary: new CoverageSummary(summary),
+      summary,
     })
   }
 
