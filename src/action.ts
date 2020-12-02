@@ -147,9 +147,14 @@ export async function getCoverageTable(
 
   let changedFiles: Array<GitHubFile> = []
 
+  core.info("Show Only Coverage Changed Files: " + shouldShowOnlyCoverageChangedFiles)
+
   if (shouldShowOnlyCoverageChangedFiles()) {
+    core.info("Fetching changed files")
     changedFiles = await getChangedPRFiles(octokit)
   }
+
+  core.info("Changed files: " + JSON.stringify(changedFiles))
 
   for (const [filename, data] of Object.entries(covMap.data || {})) {
     const { data: summary } = data.toSummary()
@@ -277,7 +282,6 @@ export function asMarkdownCode(str: string) {
  * credit to: https://github.com/trilom/file-changes-action/blob/master/src/GithubHelper.ts
  */
 async function getChangedPRFiles(octokit: GitHub): Promise<GitHubFile[]> {
-  core.info("Fetching changed files")
   try {
     const options = octokit.pulls.listFiles.endpoint.merge({
       owner: context.repo.owner,
@@ -288,7 +292,6 @@ async function getChangedPRFiles(octokit: GitHub): Promise<GitHubFile[]> {
       options,
       (response) => response.data,
     )
-    core.info("Changed files: " + JSON.stringify(files))
 
     return files
   } catch (error) {
