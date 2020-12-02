@@ -1,5 +1,5 @@
 import { sep, join, resolve } from "path"
-import { readFileSync } from "fs"
+import { readFileSync, existsSync } from "fs"
 import { exec } from "@actions/exec"
 import * as core from "@actions/core"
 import { GitHub, context } from "@actions/github"
@@ -12,6 +12,7 @@ import table from "markdown-table"
 import {
   createCoverageMap,
   CoverageMapData,
+  CoverageSummary,
   createCoverageSummary,
 } from "istanbul-lib-coverage"
 import type { FormattedTestResults } from "@jest/test-result/build/types"
@@ -35,6 +36,11 @@ interface GitHubFile {
   status: string
   previous_filename: string
   distinct: boolean
+}
+
+interface CoverageMapResult {
+  filename: string
+  summary: CoverageSummary
 }
 
 export async function run() {
@@ -61,22 +67,28 @@ export async function run() {
     // Parse results
     const results = parseResults(RESULTS_FILE)
 
-    // Checks
-    const checkPayload = getCheckPayload(results, CWD)
-    await octokit.checks.create(checkPayload)
+    if (!results) {
+      const error = "failure to parse + " + RESULTS_FILE
+      console.error(error)
+      core.setFailed(error)
+    } else {
+      // Checks
+      const checkPayload = getCheckPayload(results, CWD)
+      await octokit.checks.create(checkPayload)
 
-    // Coverage comments
-    if (getPullId() && shouldCommentCoverage()) {
-      const comment = await getCoverageTable(results, CWD, octokit)
-      if (comment) {
-        await deletePreviousComments(octokit)
-        const commentPayload = getCommentPayload(comment)
-        await octokit.issues.createComment(commentPayload)
+      // Coverage comments
+      if (getPullId() && shouldCommentCoverage()) {
+        const comment = await getCoverageTable(results, CWD, octokit)
+        if (comment) {
+          await deletePreviousComments(octokit)
+          const commentPayload = getCommentPayload(comment)
+          await octokit.issues.createComment(commentPayload)
+        }
       }
-    }
 
-    if (!results.success) {
-      core.setFailed("Some jest tests failed.")
+      if (!results.success) {
+        core.setFailed("Some jest tests failed.")
+      }
     }
   } catch (error) {
     console.error(error)
@@ -128,6 +140,8 @@ export async function getCoverageTable(
     return false
   }
 
+  const baseSummaries = getBaseCoverageSummaries()
+
   const allSummary = createCoverageSummary()
 
   // calculate the total coverage summary
@@ -145,6 +159,18 @@ export async function getCoverageTable(
     allSummary.lines.pct + "%",
   ])
 
+  const baseAllSummary = baseSummaries?.find((s) => s.filename === "All files")
+
+  if (baseAllSummary) {
+    rows.push([
+      "Δ",
+      allSummary.statements.pct - baseAllSummary.summary.statements.pct + "%",
+      allSummary.branches.pct - baseAllSummary.summary.branches.pct + "%",
+      allSummary.functions.pct - baseAllSummary.summary.functions.pct + "%",
+      allSummary.lines.pct - baseAllSummary.summary.lines.pct + "%",
+    ])
+  }
+
   let changedFiles: Array<GitHubFile> = []
 
   if (shouldShowOnlyCoverageChangedFiles()) {
@@ -156,7 +182,7 @@ export async function getCoverageTable(
     const showAll = !shouldShowOnlyCoverageChangedFiles()
     const canonicalFilename = filename.replace(cwd, "")
 
-    if (showAll || changedFiles.find((f) => f.filename === canonicalFilename))
+    if (showAll || changedFiles.find((f) => f.filename === canonicalFilename)) {
       rows.push([
         canonicalFilename,
         summary.statements.pct + "%",
@@ -164,9 +190,72 @@ export async function getCoverageTable(
         summary.functions.pct + "%",
         summary.lines.pct + "%",
       ])
+    }
+
+    const baseSummary = baseSummaries?.find((s) => s.filename === "All files")
+
+    if (baseSummary) {
+      rows.push([
+        "Δ",
+        summary.statements.pct - baseSummary.summary.statements.pct + "%",
+        summary.branches.pct - baseSummary.summary.branches.pct + "%",
+        summary.functions.pct - baseSummary.summary.functions.pct + "%",
+        summary.lines.pct - baseSummary.summary.lines.pct + "%",
+      ])
+    }
   }
 
   return COVERAGE_HEADER + table(rows, { align: ["l", "r", "r", "r", "r"] })
+}
+
+function getBaseCoverageSummaries(): Array<CoverageMapResult> | undefined {
+  const baseResultsFilePath = core.getInput("base-result-file", { required: false })
+
+  if (!baseResultsFilePath) {
+    return []
+  }
+
+  const baseResults = parseResults(baseResultsFilePath)
+
+  if (!baseResults) {
+    return []
+  }
+
+  const covMap = createCoverageMap(
+    (baseResults.coverageMap as unknown) as CoverageMapData,
+  )
+
+  if (!Object.keys(covMap.data).length) {
+    console.error("No entries found in coverage data")
+    return undefined
+  }
+
+  const allSummary = createCoverageSummary()
+
+  // calculate the total coverage summary
+  covMap.files().forEach(function (f) {
+    const fc = covMap.fileCoverageFor(f)
+    const fileSummary = fc.toSummary()
+    allSummary.merge(fileSummary)
+  })
+
+  const summaries: Array<CoverageMapResult> = []
+
+  summaries.push({
+    filename: "All files",
+    summary: allSummary,
+  })
+
+  for (const [filename, data] of Object.entries(covMap.data || {})) {
+    const { data: summary } = data.toSummary()
+
+    summaries.push({
+      filename,
+      summary: new CoverageSummary(summary),
+    })
+  }
+
+  return summaries
 }
 
 function getCommentPayload(body: string) {
@@ -216,10 +305,13 @@ function getJestCommand(resultsFile: string) {
   return cmd
 }
 
-function parseResults(resultsFile: string): FormattedTestResults {
-  const results = JSON.parse(readFileSync(resultsFile, "utf-8"))
-  console.debug("Jest results: %j", results)
-  return results
+function parseResults(resultsFile: string): FormattedTestResults | undefined {
+  if (existsSync(resultsFile)) {
+    const results = JSON.parse(readFileSync(resultsFile, "utf-8"))
+    console.debug("Jest results: %j", results)
+    return results
+  }
+  return undefined
 }
 
 async function execJest(cmd: string, cwd?: string) {
