@@ -167,10 +167,10 @@ export async function getCoverageTable(
   if (baseAllSummary) {
     rows.push([
       "Δ",
-      allSummary.statements.pct - baseAllSummary.summary.statements.pct + "%",
-      allSummary.branches.pct - baseAllSummary.summary.branches.pct + "%",
-      allSummary.functions.pct - baseAllSummary.summary.functions.pct + "%",
-      allSummary.lines.pct - baseAllSummary.summary.lines.pct + "%",
+      getDelta(allSummary.statements.pct, baseAllSummary.summary.statements.pct),
+      getDelta(allSummary.branches.pct, baseAllSummary.summary.branches.pct),
+      getDelta(allSummary.functions.pct, baseAllSummary.summary.functions.pct),
+      getDelta(allSummary.lines.pct, baseAllSummary.summary.lines.pct),
     ])
   }
 
@@ -194,21 +194,29 @@ export async function getCoverageTable(
         summary.lines.pct + "%",
       ])
 
-      const baseSummary = baseSummaries?.find((s) => s.filename === filename)
+      const baseSummary = baseSummaries?.find(
+        (s) => s.filename.replace(cwd, "") === canonicalFilename,
+      )
 
       if (baseSummary) {
         rows.push([
           "Δ",
-          summary.statements.pct - baseSummary.summary.statements.pct + "%",
-          summary.branches.pct - baseSummary.summary.branches.pct + "%",
-          summary.functions.pct - baseSummary.summary.functions.pct + "%",
-          summary.lines.pct - baseSummary.summary.lines.pct + "%",
+          getDelta(summary.statements.pct, baseSummary.summary.statements.pct),
+          getDelta(summary.branches.pct, baseSummary.summary.branches.pct),
+          getDelta(summary.functions.pct, baseSummary.summary.functions.pct),
+          getDelta(summary.lines.pct, baseSummary.summary.lines.pct),
         ])
       }
     }
   }
 
   return COVERAGE_HEADER + table(rows, { align: ["l", "r", "r", "r", "r"] })
+}
+
+function getDelta(newPct: number, oldPct: number): string {
+  const delta = newPct - oldPct
+  const prefix = delta > 0 && "+"
+  return `${prefix}${delta.toFixed(2)}%`
 }
 
 function getBaseCoverageSummaries(): Array<CoverageMapResult> | undefined {
