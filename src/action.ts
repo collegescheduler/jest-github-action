@@ -277,6 +277,7 @@ export function asMarkdownCode(str: string) {
  * credit to: https://github.com/trilom/file-changes-action/blob/master/src/GithubHelper.ts
  */
 async function getChangedPRFiles(octokit: GitHub): Promise<GitHubFile[]> {
+  core.info("Fetching changed files")
   try {
     const options = octokit.pulls.listFiles.endpoint.merge({
       owner: context.repo.owner,
@@ -287,6 +288,8 @@ async function getChangedPRFiles(octokit: GitHub): Promise<GitHubFile[]> {
       options,
       (response) => response.data,
     )
+    core.info("Changed files: " + JSON.stringify(files))
+
     return files
   } catch (error) {
     const eString = `There was an error getting change files for repo:${context.repo.repo} owner:${context.repo.owner} pr:${context.payload.pull_request?.number}`
