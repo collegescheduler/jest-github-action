@@ -24,7 +24,11 @@ inputs:
     description: "Only list coverage for changed files"
     required: false
     default: "false"
-  base-result-file:
+  results-file:
+    description: "Filename for the jest result file"
+    required: false
+    default: "jest.results.json"
+  base-results-file:
     description: "Optional Base Result file used to generate deltas in code coverage result comment"
     required: false
     default: ""

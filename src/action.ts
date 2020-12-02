@@ -47,7 +47,9 @@ export async function run() {
   let workingDirectory = core.getInput("working-directory", { required: false })
   let cwd = workingDirectory ? resolve(workingDirectory) : process.cwd()
   const CWD = cwd + sep
-  const RESULTS_FILE = join(CWD, "jest.results.json")
+  const resultFileName =
+    core.getInput("results-file", { required: false }) || "jest.results.json"
+  const RESULTS_FILE = join(CWD, resultFileName)
 
   try {
     const token = process.env.GITHUB_TOKEN
@@ -209,7 +211,7 @@ export async function getCoverageTable(
 }
 
 function getBaseCoverageSummaries(): Array<CoverageMapResult> | undefined {
-  const baseResultsFilePath = core.getInput("base-result-file", { required: false })
+  const baseResultsFilePath = core.getInput("base-results-file", { required: false })
 
   if (!baseResultsFilePath) {
     return []
