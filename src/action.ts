@@ -185,7 +185,7 @@ export async function getCoverageTable(
     const showAll = !shouldShowOnlyCoverageChangedFiles()
     const canonicalFilename = filename.replace(cwd, "")
 
-    if (showAll || changedFiles.find((f) => f.filename === canonicalFilename)) {
+    if (showAll || isInChangedFiles(changedFiles, canonicalFilename)) {
       rows.push([
         canonicalFilename,
         summary.statements.pct + "%",
@@ -213,9 +213,18 @@ export async function getCoverageTable(
   return COVERAGE_HEADER + table(rows, { align: ["l", "r", "r", "r", "r"] })
 }
 
+function isInChangedFiles(
+  changedFiles: Array<GitHubFile>,
+  coverageFilename: string,
+): boolean {
+  return !!changedFiles.find(
+    (f) => f.filename.replace(".test.", ".") === coverageFilename,
+  )
+}
+
 function getDelta(newPct: number, oldPct: number): string {
   const delta = newPct - oldPct
-  const prefix = delta > 0 && "+"
+  const prefix = delta > 0 ? "+" : ""
   return `${prefix}${delta.toFixed(2)}%`
 }
 
